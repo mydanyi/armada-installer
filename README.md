@@ -1,8 +1,22 @@
 # Armada Installer
 
-Decky plugin that installs Armada onto the internal disk from the SD-card
-installer environment. It works without a Steam account, a game library or a
-sign-in, and it never writes to a disk the user did not confirm.
+**English** | [简体中文](README.zh-CN.md)
+
+Decky plugin for [ArmadaOS](https://github.com/armada-os/armada) that installs
+Armada onto the internal disk from the SD-card installer environment. It works
+without a Steam account, a game library or a sign-in, and it never writes to a
+disk the user did not confirm.
+
+This plugin is an installation component for ArmadaOS. For the operating
+system, device support, images and the main project documentation, see the
+[ArmadaOS repository](https://github.com/armada-os/armada).
+
+## Requirements
+
+- [ArmadaOS](https://github.com/armada-os/armada) and its SD-card installer
+  environment.
+- A supported ARM64 handheld with Decky Loader available before sign-in.
+- Enough internal storage for the selected layout.
 
 ## What the panel does
 
@@ -64,3 +78,17 @@ locale dictionaries.
 
 The image build compiles this plugin in the `decky-build` stage and installs the
 resulting `dist/` with the other bundled plugins.
+
+## Support and community
+
+For ArmadaOS images, device support and system issues, start with the
+[ArmadaOS project](https://github.com/armada-os/armada). For plugin-specific
+installation or UI issues, use [Issues](https://github.com/mydanyi/armada-installer/issues)
+in this repository.
+
+Special thanks to **深圳市退格科技有限公司** for supporting the development,
+testing and maintenance of ArmadaOS plugins.
+
+- Sponsorship: [Afdian](https://afdian.com/a/meetmiku)
+- QQ fan group: **487945399**
+- QQ casual chat group: **477426414**
