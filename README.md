@@ -79,6 +79,12 @@ locale dictionaries.
 The image build compiles this plugin in the `decky-build` stage and installs the
 resulting `dist/` with the other bundled plugins.
 
+## License
+
+Armada Installer is licensed under the [GNU General Public License v3.0 or
+later](LICENSE). ArmadaOS and its bundled components may carry separate
+licenses; see the [ArmadaOS license information](https://github.com/armada-os/armada/blob/main/LICENSE.md).
+
 ## Support and community
 
 For ArmadaOS images, device support and system issues, start with the

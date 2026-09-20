@@ -58,6 +58,12 @@ npm run build    # rollup -c，输出 dist/
 
 系统镜像会在 `decky-build` 阶段编译插件，并把生成的 `dist/` 与其他 Decky 插件一起安装。
 
+## 许可证
+
+Armada Installer 使用 [GNU 通用公共许可证第 3 版或更高版本](LICENSE)
+（GPL-3.0-or-later）。ArmadaOS 及其内置组件可能使用各自的许可证，详见
+[ArmadaOS 许可证说明](https://github.com/armada-os/armada/blob/main/LICENSE.md)。
+
 ## 支持与交流
 
 ArmadaOS 镜像、设备支持和系统问题请先参考
