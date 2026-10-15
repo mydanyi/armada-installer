@@ -102,8 +102,21 @@ function ConfirmInstallModal({
   );
 }
 
-export function Content() {
-  const [locale, setLocale] = useState<Locale>(() => detectLocaleFromEnvironment());
+export interface ContentProps {
+  // Optional controlled locale. When omitted, Content keeps detecting and owning
+  // its own locale, so the legacy `<Content />` usage is unchanged.
+  locale?: Locale;
+  onLocaleChange?: (locale: Locale) => void;
+  hideLanguageSelector?: boolean;
+}
+
+export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelector = false }: ContentProps = {}) {
+  const [internalLocale, setInternalLocale] = useState<Locale>(() => detectLocaleFromEnvironment());
+  const locale = localeProp ?? internalLocale;
+  const changeLocale = useCallback((next: Locale) => {
+    setInternalLocale(next);
+    onLocaleChange?.(next);
+  }, [onLocaleChange]);
   const text = useCallback<TextFn>((key, variables) => translate(locale, key, variables), [locale]);
 
   const [inspection, setInspection] = useState<Inspection | null>(null);
@@ -554,14 +567,16 @@ export function Content() {
 
   return (
     <PanelSection title={text("app.title")}>
-      <PanelSectionRow>
-        <DropdownItem
-          label={text("language.label")}
-          rgOptions={languageOptions}
-          selectedOption={locale}
-          onChange={(option) => setLocale(localeFromLanguage(option.data) ?? "en")}
-        />
-      </PanelSectionRow>
+      {hideLanguageSelector ? null : (
+        <PanelSectionRow>
+          <DropdownItem
+            label={text("language.label")}
+            rgOptions={languageOptions}
+            selectedOption={locale}
+            onChange={(option) => changeLocale(localeFromLanguage(option.data) ?? "en")}
+          />
+        </PanelSectionRow>
+      )}
       {body}
     </PanelSection>
   );

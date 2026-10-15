@@ -8,12 +8,13 @@ running across UI closes and plugin reloads.
 
 import asyncio
 
-from armada_installer.service import InstallerError, InstallerService
+from armada_installer.service import InstallerError, InstallerService, TfLibraryService
 
 
 class Plugin:
     def __init__(self):
         self._service = InstallerService()
+        self._tf = TfLibraryService()
 
     async def _call(self, function, *args, **kwargs):
         try:
@@ -39,6 +40,18 @@ class Plugin:
 
     async def power_off(self):
         return await self._call(self._service.poweroff)
+
+    async def get_tf_inspection(self):
+        return await self._call(self._tf.inspect)
+
+    async def prepare_tf_library(self, device):
+        return await self._call(self._tf.prepare, device)
+
+    async def start_tf_library(self, token, confirmed=False):
+        return await self._call(self._tf.start, token, confirmed)
+
+    async def get_tf_status(self):
+        return await self._call(self._tf.status)
 
     async def _main(self):
         return None

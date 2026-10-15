@@ -1,10 +1,10 @@
 import { definePlugin } from "@decky/api";
-import { Content } from "./Content";
+import { PluginContent } from "./PluginContent";
 
 export default definePlugin(() => ({
   name: "Armada Installer",
   alwaysRender: true,
-  content: <Content />,
+  content: <PluginContent />,
   icon: (
     <svg
       xmlns="http://www.w3.org/2000/svg"

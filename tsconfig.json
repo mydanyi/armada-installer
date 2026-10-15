@@ -12,6 +12,7 @@
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
+    "rewriteRelativeImportExtensions": true,
     "rootDir": "./src",
     "lib": ["DOM", "DOM.Iterable", "ES2020"],
     "types": ["react", "node", "webpack"],

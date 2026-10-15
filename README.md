@@ -46,6 +46,39 @@ The language follows the Steam/Decky locale (`zh_CN`, `zh-CN`, `zh-Hans`,
 `zh-SG`, `schinese` → Chinese, otherwise English) and can be switched by hand
 with the language dropdown, which works before sign-in.
 
+## TF card game library
+
+Besides installing Armada on the internal disk, the panel can turn a TF card
+into an Armada game library. The two modes are picked with the mode selector at
+the top of the panel; **System installation** is the default, and the TF card
+game library is the second entry.
+
+1. **On Android first.** Use the Smart TF Card Allocator (智能TF卡分配器) app to
+   allocate the TF card. It lays out the Android metadata/private partitions and
+   the Linux reserve partition; a fresh allocation erases all existing data on
+   the card. The app can run through Shizuku for a rootless workflow — check the
+   app for its supported Android/Shizuku version.
+2. **Then the Armada Installer entry.** Insert the card into the handheld, open
+   the Armada Installer panel, choose **TF card game library**, rescan and select
+   the card.
+3. **Linux formats only the reserve partition.** The panel formats **only** the
+   Linux reserve partition (p1) to ext4 and connects it to Steam. The Android
+   metadata and private partitions (p2/p3) and their data are preserved.
+
+- A card that already holds an Armada library is mounted and reconnected to
+  Steam without formatting, and an existing ext4 card is never automatically
+  reformatted.
+- If a conversion leaves the reserve partition retyped but not yet formatted,
+  the panel asks for the same erase confirmation again and resumes the format.
+- Before formatting, the panel shows exactly what is erased: only the Linux
+  reserve partition, with the card, p1 and the Android/Linux sizes, while p2/p3
+  are preserved. Nothing is written on load, rescan, card selection or review.
+- While working, the panel shows an indeterminate progress bar with the real
+  stage and says that closing the panel does not cancel the job. It never claims
+  a percentage.
+- On success it distinguishes **connected to the Steam library** from **mounted,
+  waiting for Steam**, with a retry button that never formats.
+
 ## Backend contract
 
 The UI calls these `@decky/api` methods; every call returns
@@ -58,6 +91,10 @@ The UI calls these `@decky/api` methods; every call returns
 | `start_install` | `token: string, confirmed: boolean` | `Status` |
 | `get_status` | – | `Status` |
 | `power_off` | – | – |
+| `get_tf_inspection` | – | `{ cards }` |
+| `prepare_tf_library` | `device: string` | `Plan` |
+| `start_tf_library` | `token: string, confirmed: boolean` | `Status` |
+| `get_tf_status` | – | `Status` |
 
 ## Development
 
@@ -72,7 +109,9 @@ npm run build    # rollup -c, emits dist/
 
 `src/model.ts` holds the shared decision helpers (size bounds, remaining space,
 power gate, block codes, confirmation content) and `src/i18n.ts` holds both
-locale dictionaries.
+locale dictionaries. `src/PluginContent.tsx` holds the mode selector, while
+`src/TfLibraryContent.tsx` with `src/tf_model.ts`, `src/tf_types.ts`,
+`src/tf_backend.ts` and `src/tf_i18n.ts` holds the TF card game library.
 
 ## Packaging
 

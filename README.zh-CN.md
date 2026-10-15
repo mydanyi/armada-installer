@@ -28,6 +28,20 @@ Armada Installer 是 ArmadaOS 的安装组件，不是独立的系统发行版�
 
 插件语言跟随 Steam／Decky 区域设置（`zh_CN`、`zh-CN`、`zh-Hans`、`zh-SG`、`schinese` 显示中文，其余显示英文），也可以在登录前通过语言下拉菜单手动切换。
 
+## TF 卡游戏库
+
+除了把 Armada 安装到内部存储，插件还可以把 TF 卡转换为 Armada 游戏库。两种模式通过面板顶部的模式选择器切换，默认是**系统安装**，第二项是 **TF卡游戏库**。
+
+1. **先在 Android 上操作。** 使用「智能TF卡分配器」应用完成 TF 卡分配。它会划分 Android 元数据／私有分区和 Linux 保留分区；全新分配会清除卡上已有的全部数据。该应用可通过 Shizuku 以免 root 方式运行，具体支持的 Android／Shizuku 版本请以应用说明为准。
+2. **再使用 Armada Installer 入口。** 把卡插入掌机，打开 Armada Installer 面板，选择 **TF卡游戏库**，重新扫描并选择该卡。
+3. **Linux 仅格式化保留分区。** 面板**只**把 Linux 保留分区（p1）格式化为 ext4 并接入 Steam；Android 的元数据与私有分区（p2/p3）及其数据会保留。
+
+- 已经承载 Armada 游戏库的卡只会挂载并重新接入 Steam，不会格式化；已有的 ext4 卡也不会被自动重新格式化。
+- 如果转换在中途中断，保留分区只改了类型还没格式化，面板会再次要求相同的擦除确认，然后继续格式化。
+- 格式化前，面板会明确列出擦除范围：仅 Linux 保留分区，并显示 TF 卡、p1 以及 Android／Linux 容量，同时说明 p2/p3 保留。加载、重新扫描、选择卡片和查看方案都不会写入任何数据。
+- 处理过程中面板显示不确定进度条和真实阶段，并提示关闭面板不会取消任务，不会声称百分比。
+- 成功后区分**已接入 Steam 游戏库**与**已挂载、等待 Steam**，并提供永不格式化的重试接入按钮。
+
 ## 后端接口
 
 界面通过 `@decky/api` 调用以下方法，每个方法都会返回
@@ -40,6 +54,10 @@ Armada Installer 是 ArmadaOS 的安装组件，不是独立的系统发行版�
 | `start_install` | `token: string, confirmed: boolean` | `Status` |
 | `get_status` | 无 | `Status` |
 | `power_off` | 无 | 无 |
+| `get_tf_inspection` | 无 | `{ cards }` |
+| `prepare_tf_library` | `device: string` | `Plan` |
+| `start_tf_library` | `token: string, confirmed: boolean` | `Status` |
+| `get_tf_status` | 无 | `Status` |
 
 ## 开发
 
@@ -52,7 +70,7 @@ npm run typecheck
 npm run build    # rollup -c，输出 dist/
 ```
 
-`src/model.ts` 保存尺寸范围、剩余空间、供电限制、阻止原因和确认内容等决策逻辑；`src/i18n.ts` 保存中英文文案。
+`src/model.ts` 保存尺寸范围、剩余空间、供电限制、阻止原因和确认内容等决策逻辑；`src/i18n.ts` 保存中英文文案。`src/PluginContent.tsx` 保存模式选择器，`src/TfLibraryContent.tsx` 连同 `src/tf_model.ts`、`src/tf_types.ts`、`src/tf_backend.ts`、`src/tf_i18n.ts` 保存 TF 卡游戏库。
 
 ## 打包
 
