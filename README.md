@@ -2,10 +2,14 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+**Download the latest plugin ZIP:**
+[armada-installer releases](https://github.com/mydanyi/armada-installer/releases/latest)
+
 Decky plugin for [ArmadaOS](https://github.com/armada-os/armada) that installs
-Armada onto the internal disk from the SD-card installer environment. It works
-without a Steam account, a game library or a sign-in, and it never writes to a
-disk the user did not confirm.
+Armada onto the internal disk from the SD-card installer environment, and that
+can also create an Armada game library in the Linux reserve partition of a TF
+card while keeping the Android storage on that card. Both modes work without a Steam account, a game
+library or a sign-in, and neither writes to a disk the user did not confirm.
 
 This plugin is an installation component for ArmadaOS. For the operating
 system, device support, images and the main project documentation, see the
@@ -53,11 +57,16 @@ into an Armada game library. The two modes are picked with the mode selector at
 the top of the panel; **System installation** is the default, and the TF card
 game library is the second entry.
 
-1. **On Android first.** Use the Smart TF Card Allocator (智能TF卡分配器) app to
-   allocate the TF card. It lays out the Android metadata/private partitions and
-   the Linux reserve partition; a fresh allocation erases all existing data on
-   the card. The app can run through Shizuku for a rootless workflow — check the
-   app for its supported Android/Shizuku version.
+1. **On Android first.** Use the
+   [Smart TF Card Allocator (智能TF卡分配器)](https://github.com/mydanyi/smart-tf-allocator)
+   app ([APK download](https://github.com/mydanyi/smart-tf-allocator/releases/latest))
+   to allocate the TF card. The Android app allocates and initializes the Android
+   storage; the Linux plugin only formats and mounts the Linux reserve partition
+   as ext4 and connects it to the Steam library, so the Android storage is kept.
+   The app lays out the Android metadata/private partitions and the Linux reserve
+   partition; a fresh allocation erases all existing data on the card. The app
+   can run through Shizuku for a rootless workflow — check the app for its
+   supported Android/Shizuku version.
 2. **Then the Armada Installer entry.** Insert the card into the handheld, open
    the Armada Installer panel, choose **TF card game library**, rescan and select
    the card.

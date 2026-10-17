@@ -2,9 +2,13 @@
 
 [English](README.md) | **简体中文**
 
+**下载最新插件 ZIP：**
+[armada-installer 发布页](https://github.com/mydanyi/armada-installer/releases/latest)
+
 Armada Installer 是一个面向 [ArmadaOS](https://github.com/armada-os/armada)
-的 Decky 插件，用于从 SD 卡安装环境把 Armada 安装到掌机内部存储空间。
-插件不要求登录 Steam 账号，也不要求已有游戏库；只有用户明确确认后，才会写入选定的磁盘。
+的 Decky 插件，用于从 SD 卡安装环境把 Armada 安装到掌机内部存储空间，也可以把
+TF 卡转换为与卡上 Android 存储共存的 Armada 游戏库。两种模式都不要求登录 Steam
+账号，也不要求已有游戏库；只有用户明确确认后，才会写入选定的磁盘。
 
 Armada Installer 是 ArmadaOS 的安装组件，不是独立的系统发行版。系统、设备支持、镜像和主项目文档请参考
 [ArmadaOS 主项目](https://github.com/armada-os/armada)。
@@ -32,7 +36,7 @@ Armada Installer 是 ArmadaOS 的安装组件，不是独立的系统发行版�
 
 除了把 Armada 安装到内部存储，插件还可以把 TF 卡转换为 Armada 游戏库。两种模式通过面板顶部的模式选择器切换，默认是**系统安装**，第二项是 **TF卡游戏库**。
 
-1. **先在 Android 上操作。** 使用「智能TF卡分配器」应用完成 TF 卡分配。它会划分 Android 元数据／私有分区和 Linux 保留分区；全新分配会清除卡上已有的全部数据。该应用可通过 Shizuku 以免 root 方式运行，具体支持的 Android／Shizuku 版本请以应用说明为准。
+1. **先在 Android 上操作。** 使用[「智能TF卡分配器」](https://github.com/mydanyi/smart-tf-allocator)应用完成 TF 卡分配，APK 可从[发布页](https://github.com/mydanyi/smart-tf-allocator/releases/latest)下载。Android 端负责分配并初始化 Android 存储空间；Linux 插件只把 Linux 保留分区格式化为 ext4 并挂载、接入 Steam 游戏库，同时保留 Android 存储。该应用会划分 Android 元数据／私有分区和 Linux 保留分区；全新分配会清除卡上已有的全部数据。该应用可通过 Shizuku 以免 root 方式运行，具体支持的 Android／Shizuku 版本请以应用说明为准。
 2. **再使用 Armada Installer 入口。** 把卡插入掌机，打开 Armada Installer 面板，选择 **TF卡游戏库**，重新扫描并选择该卡。
 3. **Linux 仅格式化保留分区。** 面板**只**把 Linux 保留分区（p1）格式化为 ext4 并接入 Steam；Android 的元数据与私有分区（p2/p3）及其数据会保留。
 
