@@ -10,6 +10,7 @@ import json
 import os
 import secrets
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -38,7 +39,19 @@ class InstallerError(Exception):
 
 
 def _capture(runner, argv, timeout=30):
-    return runner(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout)
+    # A frozen PyInstaller bundle points LD_LIBRARY_PATH at its own runtime
+    # libraries.  The system programs started here must load the system
+    # libraries instead, so use the pre-bundle value in the child environment
+    # only; the parent environment is never modified.
+    env = dict(os.environ)
+    if getattr(sys, "frozen", False):
+        original = env.get("LD_LIBRARY_PATH_ORIG")
+        if original:
+            env["LD_LIBRARY_PATH"] = original
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+    return runner(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                  timeout=timeout, env=env)
 
 
 def _read_int(path):

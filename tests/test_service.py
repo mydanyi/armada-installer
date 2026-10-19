@@ -11,7 +11,7 @@ target_changed, launch_failed, status_unavailable, not_succeeded, poweroff_faile
 
 import os, pathlib, subprocess, sys, tempfile, unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "py_modules"))
 
@@ -417,6 +417,62 @@ class StatusTests(ServiceTestCase):
         svc = self.service(show=unit_show(active="active", result="success", code="0"))
         svc.poweroff()
         self.assertTrue([call for call in self.runner.calls if call[:2] == ["systemctl", "poweroff"]])
+
+
+class CaptureEnvironmentTests(unittest.TestCase):
+    """_capture must not hand a PyInstaller bundle's LD_LIBRARY_PATH to children.
+
+    On a Decky install, sys.frozen plus LD_LIBRARY_PATH=/tmp/_MEI... makes the
+    system /usr/bin/python3 load a foreign stdlib.  Only the child env matters.
+    """
+
+    bundled, absent = "/tmp/_MEI000007eazfD2vZ", object()
+    argv = [service.INSTALLER, "detect", "--json"]
+
+    def capture(self, env, frozen=True):
+        runner, before = Mock(return_value=subprocess.CompletedProcess(self.argv, 0, "{}", "")), dict(os.environ)
+        with patch.dict(os.environ, env, clear=True):
+            if frozen is None:
+                service._capture(runner, list(self.argv))
+            else:
+                with patch.object(sys, "frozen", frozen, create=True):
+                    service._capture(runner, list(self.argv))
+            self.assertEqual(dict(os.environ), env)
+        self.assertEqual(dict(os.environ), before)
+        self.assertEqual(runner.call_args.args[0], self.argv)
+        kwargs = runner.call_args.kwargs
+        self.assertEqual([kwargs.get(key) for key in ("stdout", "stderr", "text", "timeout")],
+                         [subprocess.PIPE, subprocess.PIPE, True, 30])
+        return kwargs["env"]
+
+    def test_bundle_path_is_replaced_by_original(self):
+        captured = self.capture({"LD_LIBRARY_PATH": self.bundled,
+                                 "LD_LIBRARY_PATH_ORIG": "/usr/lib/system-extra",
+                                 "LANG": "C.UTF-8", "ARMADA_SENTINEL": "keep"})
+        self.assertEqual(captured["LD_LIBRARY_PATH"], "/usr/lib/system-extra")
+        self.assertEqual((captured["LANG"], captured["ARMADA_SENTINEL"]), ("C.UTF-8", "keep"))
+        self.assertNotIn(self.bundled, "".join(captured.values()))
+
+    def test_missing_or_empty_original_drops_bundle_path(self):
+        for orig in (self.absent, ""):
+            with self.subTest(orig=orig):
+                env = {"LD_LIBRARY_PATH": self.bundled, "LANG": "C.UTF-8"}
+                if orig is not self.absent:
+                    env["LD_LIBRARY_PATH_ORIG"] = orig
+                captured = self.capture(env)
+                self.assertFalse(captured.get("LD_LIBRARY_PATH"))
+                self.assertEqual(captured["LANG"], "C.UTF-8")
+
+    def test_nonfrozen_process_keeps_its_library_path(self):
+        for frozen in (False, None):
+            with self.subTest(frozen=frozen):
+                saved = sys.__dict__.pop("frozen", self.absent)
+                try:
+                    captured = self.capture({"LD_LIBRARY_PATH": self.bundled}, frozen=frozen)
+                finally:
+                    if saved is not self.absent:
+                        sys.frozen = saved
+                self.assertEqual(captured["LD_LIBRARY_PATH"], self.bundled)
 
 
 if __name__ == "__main__":
