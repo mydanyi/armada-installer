@@ -1,6 +1,6 @@
 {
   "name": "Armada Installer",
-  "author": "Armada",
+  "author": "单翼",
   "flags": ["root"],
   "api_version": 1
 }

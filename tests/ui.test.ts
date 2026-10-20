@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   canReviewInstall,
+  canShowAllocation,
   clampSize,
   confirmationFacts,
   confirmationSpec,
@@ -9,6 +10,7 @@ import {
   erasesAndroidData,
   installBlockCode,
   isSizeValid,
+  nextAndroidSize,
   powerGate,
   remainingLinuxGib,
   sizeBounds,
@@ -245,4 +247,61 @@ test("known error codes localize and unknown codes map to a generic error", () =
   assert.equal(translateErrorCode("zh", "made_up_code"), translate("zh", "error.internal_error"));
   assert.equal(translateErrorCode("en", "made_up_code"), translate("en", "error.internal_error"));
   assert.equal(translateErrorCode("en", ""), "");
+});
+
+// The allocation API is exported by src/model.ts and called directly below.
+test("install controls appear only after a settled fresh detection with external power", () => {
+  // Nothing detected yet.
+  assert.equal(canShowAllocation(null, false), false);
+  assert.equal(canShowAllocation(inspection(), false), true);
+  // Stale fresh data from the previous pass must stay hidden while detecting.
+  assert.equal(canShowAllocation(inspection(), true), false);
+});
+
+test("battery-only, unknown power, and non-installable detections hide the controls", () => {
+  assert.equal(canShowAllocation(inspection({ power: battery }), false), false);
+  assert.equal(canShowAllocation(inspection({ power: unknownPower }), false), false);
+  assert.equal(canShowAllocation(inspection({ can_install: false, reason: "boot_disk_forbidden" }), false), false);
+  assert.equal(canShowAllocation(inspection({ layout: "unavailable", can_install: false, reason: "boot_disk_unknown" }), false), false);
+  assert.equal(canShowAllocation(inspection({ layout: "occupied" }), false), false);
+  assert.equal(canShowAllocation(inspection({ layout: "toosmall", can_install: false, reason: "toosmall" }), false), false);
+});
+
+test("the controls require valid positive integer size bounds", () => {
+  assert.equal(canShowAllocation(inspection({ info: { ...freshInfo, android_min_gib: 0 } }), false), false);
+  assert.equal(canShowAllocation(inspection({ info: { ...freshInfo, android_max_gib: 0 } }), false), false);
+  assert.equal(canShowAllocation(inspection({ info: { ...freshInfo, android_min_gib: 512, android_max_gib: 16 } }), false), false);
+  assert.equal(canShowAllocation(inspection({ info: { ...freshInfo, android_max_gib: 48.5 } }), false), false);
+  assert.equal(
+    canShowAllocation(inspection({ info: { mode: "fresh", device: "/dev/mmcblk0", table_fingerprint: "abc123" } }), false),
+    false,
+  );
+});
+
+test("re-selecting the same target keeps a chosen size across power and bounds changes", () => {
+  assert.equal(nextAndroidSize(inspection(), inspection(), 64), 64);
+  // Power can change between detects without turning this into a new target.
+  assert.equal(nextAndroidSize(inspection(), inspection({ power: battery }), 64), 64);
+  // Bounds can widen without discarding the explicit choice.
+  const wider = inspection({ info: { ...freshInfo, android_min_gib: 8, android_max_gib: 200 } });
+  assert.equal(nextAndroidSize(inspection(), wider, 64), 64);
+});
+
+test("a narrowed bound clamps the retained size for the same target", () => {
+  const narrower = inspection({ info: { ...freshInfo, android_max_gib: 48 } });
+  assert.equal(nextAndroidSize(inspection(), narrower, 64), 48);
+  const raisedFloor = inspection({ info: { ...freshInfo, android_min_gib: 80 } });
+  assert.equal(nextAndroidSize(inspection(), raisedFloor, 64), 80);
+});
+
+test("a different device, table, unknown fingerprint, or first detection resets the size", () => {
+  const otherDevice = inspection({ info: { ...freshInfo, device: "/dev/nvme0n1" } });
+  assert.equal(nextAndroidSize(inspection(), otherDevice, 64), 32);
+  const otherTable = inspection({ info: { ...freshInfo, table_fingerprint: "def456" } });
+  assert.equal(nextAndroidSize(inspection(), otherTable, 64), 32);
+  const unknownTable = inspection({ info: { ...freshInfo, table_fingerprint: "" } });
+  assert.equal(nextAndroidSize(inspection(), unknownTable, 64), 32);
+  // An unknown previous fingerprint never establishes same-target identity.
+  assert.equal(nextAndroidSize(unknownTable, inspection(), 64), 32);
+  assert.equal(nextAndroidSize(null, inspection(), 64), 32);
 });

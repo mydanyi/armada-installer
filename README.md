@@ -24,9 +24,13 @@ system, device support, images and the main project documentation, see the
 
 ## What the panel does
 
-- Reads the disk and reports the target, the readable layout
-  (`fresh` / `occupied` / `toosmall` / `unavailable`), the capacities and the
-  power source.
+- Reads the disk only when you press **Detect disk** and reports the target, the
+  readable layout (`fresh` / `occupied` / `toosmall` / `unavailable`), the
+  capacities and the power source. Nothing is inspected on load, and the panel
+  first asks you to connect the charger.
+- The system install, TF card game library and settings are separate icon tabs
+  at the top of the panel, with the plugin version shown next to the title on
+  every tab. The system install tab is selected first.
 - **Fresh layout:** pick the Android size with a slider and see the Armada space
   that remains, including the boot partitions. Installing factory-resets Android
   and erases **all** Android user data.
@@ -43,19 +47,23 @@ system, device support, images and the main project documentation, see the
 - On failure it tells the user to select the SD card as the boot source in ABL
   and rerun the installer to retry, and notes that **UNINSTALL CFW** in ABL is
   only for abandoning the internal installation, not part of retrying.
-- Install is blocked on battery only. An unknown power source does not block:
-  review and the confirmation dialog warn to connect the charger.
+- A fresh allocation requires a confirmed charger and a successful explicit
+  **Detect disk** first. On battery, or when the power source is unknown, the
+  size slider stays hidden; the existing occupied-layout installation keeps its
+  usual behaviour. Detecting the same disk and partition table again keeps the
+  size you already chose.
 
 The language follows the Steam/Decky locale (`zh_CN`, `zh-CN`, `zh-Hans`,
-`zh-SG`, `schinese` → Chinese, otherwise English) and can be switched by hand
-with the language dropdown, which works before sign-in.
+`zh-SG`, `schinese` → Chinese, otherwise English) and can also be switched by
+hand with the language selector in the Settings tab, which works before
+sign-in.
 
 ## TF card game library
 
 Besides installing Armada on the internal disk, the panel can turn a TF card
-into an Armada game library. The two modes are picked with the mode selector at
-the top of the panel; **System installation** is the default, and the TF card
-game library is the second entry.
+into an Armada game library. The two features are separate icon tabs at the top
+of the panel; **System installation** is the default tab, and the TF card game
+library is the second one. The third tab lists language, author and version, in that order.
 
 1. **On Android first.** Use the
    [Smart TF Card Allocator (智能TF卡分配器)](https://github.com/mydanyi/smart-tf-allocator)
@@ -117,8 +125,9 @@ npm run build    # rollup -c, emits dist/
 ```
 
 `src/model.ts` holds the shared decision helpers (size bounds, remaining space,
-power gate, block codes, confirmation content) and `src/i18n.ts` holds both
-locale dictionaries. `src/PluginContent.tsx` holds the mode selector, while
+power gate, block codes, confirmation content, allocation visibility and size
+retention) and `src/i18n.ts` holds both locale dictionaries.
+`src/PluginContent.tsx` holds the icon tab strip and the settings tab, while
 `src/TfLibraryContent.tsx` with `src/tf_model.ts`, `src/tf_types.ts`,
 `src/tf_backend.ts` and `src/tf_i18n.ts` holds the TF card game library.
 

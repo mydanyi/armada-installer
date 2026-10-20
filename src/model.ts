@@ -130,3 +130,37 @@ export function confirmationSpec(layout: "fresh" | "occupied"): {
     eraseKey: "confirm.eraseScope.fresh",
   };
 }
+
+// The Android size controls only appear for a settled fresh detection that the
+// backend already accepted, with external power and real positive integer
+// bounds. Stale data kept during a new detect, battery-only power, an unknown
+// power source, a non-fresh layout and an unknown or inverted range all hide it.
+export function canShowAllocation(inspection: Inspection | null, detecting: boolean): boolean {
+  if (!inspection || detecting) return false;
+  if (inspection.layout !== "fresh" || !inspection.can_install) return false;
+  if (powerGate(inspection.power) !== "ok") return false;
+  const { min, max } = sizeBounds(inspection.info);
+  return Number.isInteger(min) && Number.isInteger(max) && min > 0 && max > 0 && min <= max;
+}
+
+// Same target means the same disk and the same known partition table. A
+// missing fingerprint never establishes identity, so a fresh or cleared table
+// counts as a new target.
+function sameAllocationTarget(previous: Inspection | null, next: Inspection): boolean {
+  if (!previous) return false;
+  if (previous.layout !== "fresh" || next.layout !== "fresh") return false;
+  const before = previous.info.table_fingerprint;
+  const after = next.info.table_fingerprint;
+  if (!before || !after) return false;
+  return previous.info.device === next.info.device && before === after;
+}
+
+// Keeps the explicit choice only while the same fresh target stays in place,
+// clamping it to the bounds of the new detection. A different disk, a changed
+// or unknown partition table, or a non-fresh layout resets to that detection's
+// default size.
+export function nextAndroidSize(previous: Inspection | null, next: Inspection, selected: number): number {
+  if (next.layout !== "fresh") return 32;
+  if (!sameAllocationTarget(previous, next)) return defaultSizeFor(next.info);
+  return clampSize(selected, next.info);
+}

@@ -17,14 +17,15 @@ import { detectLocaleFromEnvironment, localeFromLanguage, translate, translateEr
 import type { Locale, TranslationKey } from "./i18n";
 import {
   canReviewInstall,
+  canShowAllocation,
   clampSize,
   confirmationFacts,
   confirmationSpec,
-  defaultSizeFor,
   erasesAndroidData,
   installBlockCode,
   isInstallableLayout,
   isSizeValid,
+  nextAndroidSize,
   powerGate,
   remainingLinuxGib,
   sizeBounds,
@@ -121,7 +122,9 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
 
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [inspectionError, setInspectionError] = useState<ErrorInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Detection is manual: nothing is read on mount, and the panel shows the
+  // charger + detect hint until the user presses the button.
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [actionError, setActionError] = useState<ErrorInfo | null>(null);
@@ -137,6 +140,14 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
   const mounted = useRef(true);
   const actionLock = useRef(false);
   const sessionRef = useRef(0);
+  const detecting = useRef(false);
+  // The previous successful detection and the chosen size live in a ref so a
+  // detect that resolves after a re-render compares against current values
+  // instead of a stale callback closure, and never re-triggers itself.
+  const selection = useRef<{ inspection: Inspection | null; androidGib: number }>({
+    inspection: null,
+    androidGib: 32,
+  });
 
   useEffect(() => {
     mounted.current = true;
@@ -146,31 +157,36 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
   }, []);
 
   const loadInspection = useCallback(async () => {
+    if (detecting.current) return;
+    detecting.current = true;
     setLoading(true);
     try {
       const result = await getInspection();
       if (!mounted.current) return;
       if (!result.ok) {
+        // A failed detect leaves no trustworthy target, so the next successful
+        // one starts from its own default instead of a stale selection.
+        selection.current = { inspection: null, androidGib: selection.current.androidGib };
         setInspectionError({ code: result.error, detail: result.detail });
         setInspection(null);
         return;
       }
       const next = result.data;
+      const chosen = nextAndroidSize(selection.current.inspection, next, selection.current.androidGib);
+      selection.current = { inspection: next, androidGib: chosen };
       setInspectionError(null);
       setInspection(next);
-      setAndroidGib(next.layout === "fresh" ? defaultSizeFor(next.info) : 32);
+      setAndroidGib(chosen);
     } catch (error) {
       if (!mounted.current) return;
+      selection.current = { inspection: null, androidGib: selection.current.androidGib };
       setInspectionError({ code: "inspection_failed", detail: String(error) });
       setInspection(null);
     } finally {
+      detecting.current = false;
       if (mounted.current) setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    void loadInspection();
-  }, [loadInspection]);
 
   const openConfirm = useCallback((next: Plan) => {
     showModal(
@@ -211,12 +227,15 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
   }, []);
 
   const review = useCallback(async () => {
-    if (actionLock.current || busy || modalOpen) return;
+    if (actionLock.current || busy || modalOpen || loading) return;
     if (!inspection || !isInstallableLayout(inspection.layout)) return;
     // The handler keeps the same guard as the button; a disabled button alone
     // must never be the only thing standing between the user and an install.
     if (!canReviewInstall(inspection, status, statusError, retryRequested)) return;
     const layout = inspection.layout;
+    // A fresh install needs the settled allocation gate as well: no size was
+    // ever chosen while the slider stayed hidden.
+    if (layout === "fresh" && !canShowAllocation(inspection, loading)) return;
     const requested = layout === "fresh" ? clampSize(androidGib, inspection.info) : null;
     if (requested !== null && !isSizeValid(requested, inspection.info)) {
       setActionError({ code: "invalid_android_size", detail: "" });
@@ -242,7 +261,7 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
       actionLock.current = false;
       if (mounted.current) setBusy(false);
     }
-  }, [androidGib, busy, inspection, modalOpen, openConfirm, retryRequested, status, statusError]);
+  }, [androidGib, busy, inspection, loading, modalOpen, openConfirm, retryRequested, status, statusError]);
 
   const doPowerOff = useCallback(async () => {
     if (actionLock.current) return;
@@ -342,7 +361,7 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
           <PanelSectionRow>
             <Field
               label={text("details.title")}
-              description={<span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{body}</span>}
+              description={<span className="armada-installer-wrap" style={{ whiteSpace: "pre-wrap" }}>{body}</span>}
             />
           </PanelSectionRow>
         ) : null}
@@ -353,7 +372,10 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
   const infoRows = (current: Inspection) => (
     <>
       <PanelSectionRow>
-        <Field label={text("inspection.targetDisk")} description={current.info.device} />
+        <Field
+          label={text("inspection.targetDisk")}
+          description={<span className="armada-installer-wrap">{current.info.device}</span>}
+        />
       </PanelSectionRow>
       <PanelSectionRow>
         <Field label={text("inspection.layout")} description={text(layoutKeys[current.layout])} />
@@ -389,7 +411,10 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
         ) : null}
         {plan ? (
           <PanelSectionRow>
-            <Field label={text("inspection.targetDisk")} description={plan.device} />
+            <Field
+              label={text("inspection.targetDisk")}
+              description={<span className="armada-installer-wrap">{plan.device}</span>}
+            />
           </PanelSectionRow>
         ) : null}
         {detailsBlock([pollError?.detail], status.log_tail)}
@@ -444,14 +469,24 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
     body = (
       <>
         <PanelSectionRow>
-          <Field
-            label={text("app.title")}
-            description={translateErrorCode(locale, inspectionError?.code ?? "inspection_failed")}
-          />
+          <Field label={text("app.title")} description={text("detect.hint")} />
         </PanelSectionRow>
+        {inspectionError ? (
+          <PanelSectionRow>
+            <Field
+              label={text("failure.errorLabel")}
+              description={translateErrorCode(locale, inspectionError.code)}
+            />
+          </PanelSectionRow>
+        ) : null}
         <PanelSectionRow>
-          <ButtonItem onClick={() => { void loadInspection(); }} disabled={busy}>
-            {text("common.refresh")}
+          <ButtonItem
+            layout="below"
+            childrenContainerWidth="max"
+            onClick={() => { void loadInspection(); }}
+            disabled={busy || loading}
+          >
+            {text("detect.button")}
           </ButtonItem>
         </PanelSectionRow>
         {detailsBlock([inspectionError?.detail])}
@@ -462,7 +497,9 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
     const bounds = inspection.layout === "fresh" ? sizeBounds(inspection.info) : null;
     const remaining = layout ? remainingLinuxGib(inspection.info, androidGib) : null;
     const sizeOk = inspection.layout !== "fresh" || isSizeValid(androidGib, inspection.info);
-    const canReview = canReviewInstall(inspection, status, statusError, retryRequested) && sizeOk;
+    const allocation = canShowAllocation(inspection, loading);
+    const canReview = canReviewInstall(inspection, status, statusError, retryRequested) && sizeOk
+      && (layout !== "fresh" || allocation);
     const blockCode = installBlockCode(inspection);
     const gate = powerGate(inspection.power);
     const needsRefresh = gate !== "ok" || statusError || status === null;
@@ -480,7 +517,12 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
             />
           </PanelSectionRow>
         ) : null}
-        {inspection.layout === "fresh" && bounds ? (
+        {inspection.layout === "fresh" && !allocation ? (
+          <PanelSectionRow>
+            <Field description={text("detect.hint")} />
+          </PanelSectionRow>
+        ) : null}
+        {inspection.layout === "fresh" && bounds && allocation ? (
           <>
             <PanelSectionRow>
               <SliderField
@@ -491,7 +533,10 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
                 step={1}
                 showValue
                 disabled={busy}
-                onChange={setAndroidGib}
+                onChange={(value) => {
+                  selection.current = { inspection, androidGib: value };
+                  setAndroidGib(value);
+                }}
               />
             </PanelSectionRow>
             <PanelSectionRow>
@@ -539,19 +584,34 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
         ) : null}
         <PanelSectionRow>
           {layout ? (
-            <ButtonItem onClick={() => { void review(); }} disabled={!canReview || busy || modalOpen}>
+            <ButtonItem
+              layout="below"
+              childrenContainerWidth="max"
+              onClick={() => { void review(); }}
+              disabled={!canReview || busy || modalOpen || loading}
+            >
               {text("common.review")}
             </ButtonItem>
           ) : (
-            <ButtonItem onClick={() => { void loadInspection(); }} disabled={busy}>
-              {text("common.refresh")}
+            <ButtonItem
+              layout="below"
+              childrenContainerWidth="max"
+              onClick={() => { void loadInspection(); }}
+              disabled={busy || loading}
+            >
+              {text("detect.button")}
             </ButtonItem>
           )}
         </PanelSectionRow>
         {layout && needsRefresh ? (
           <PanelSectionRow>
-            <ButtonItem onClick={() => { void loadInspection(); }} disabled={busy}>
-              {text("common.refresh")}
+            <ButtonItem
+              layout="below"
+              childrenContainerWidth="max"
+              onClick={() => { void loadInspection(); }}
+              disabled={busy || loading}
+            >
+              {text("detect.button")}
             </ButtonItem>
           </PanelSectionRow>
         ) : null}
@@ -571,6 +631,8 @@ export function Content({ locale: localeProp, onLocaleChange, hideLanguageSelect
         <PanelSectionRow>
           <DropdownItem
             label={text("language.label")}
+            layout="below"
+            childrenContainerWidth="max"
             rgOptions={languageOptions}
             selectedOption={locale}
             onChange={(option) => changeLocale(localeFromLanguage(option.data) ?? "en")}

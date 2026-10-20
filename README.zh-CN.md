@@ -21,20 +21,21 @@ Armada Installer 是 ArmadaOS 的安装组件，不是独立的系统发行版�
 
 ## 插件功能
 
-- 读取内部磁盘并显示目标磁盘、分区布局（`fresh` / `occupied` / `toosmall` / `unavailable`）、容量和供电状态。
+- 只有在按下**检测磁盘**后才会读取磁盘，并显示目标磁盘、分区布局（`fresh` / `occupied` / `toosmall` / `unavailable`）、容量和供电状态。打开面板时不会自动检测，界面会先提示连接充电器。
+- 系统安装、TF卡游戏库和设置是面板顶部的三个图标标签页，插件版本显示在标题旁，并且在每个标签页都可见。默认显示系统安装标签页。
 - **全新布局（Fresh）：** 使用滑块选择 Android 保留空间，同时显示包含启动分区在内的 Armada 可用空间。安装会恢复出厂 Android，并清除全部 Android 用户数据。
 - **已有布局（Occupied）：** 不提供调整滑块；会清除目标分区，但保留 Android 及其用户数据。
 - 查看安装方案后，确认窗口会再次列出目标磁盘、容量以及清除／保留范围。取消操作和手柄 B 键都不会写入磁盘，只有明确确认后才会开始安装。
 - 安装过程中每 1.5 秒读取一次状态，显示当前阶段和进度提示。关闭插件窗口不会取消安装，界面不提供取消操作。
 - 安装成功后提示关机、拔出 SD 卡并从内部存储启动；关机仍需用户按下电源键。
 - 安装失败后提示在 ABL 中选择 SD 卡作为启动源并重新运行安装器；ABL 中的 **UNINSTALL CFW** 只用于放弃内部安装，不是重试步骤。
-- 仅在电池供电时阻止安装。无法识别供电状态时仍可查看方案，但会提醒连接充电器。
+- 全新分配需要已确认的充电器供电，并且必须先成功执行一次显式的**检测磁盘**。使用电池供电或无法识别供电状态时，尺寸滑块保持隐藏；已有布局的安装保持原有行为。再次检测到同一磁盘和分区表时，会保留已经选好的尺寸。
 
-插件语言跟随 Steam／Decky 区域设置（`zh_CN`、`zh-CN`、`zh-Hans`、`zh-SG`、`schinese` 显示中文，其余显示英文），也可以在登录前通过语言下拉菜单手动切换。
+插件语言跟随 Steam／Decky 区域设置（`zh_CN`、`zh-CN`、`zh-Hans`、`zh-SG`、`schinese` 显示中文，其余显示英文），也可以在设置标签页中通过语言选择器手动切换，登录前即可使用。
 
 ## TF 卡游戏库
 
-除了把 Armada 安装到内部存储，插件还可以把 TF 卡转换为 Armada 游戏库。两种模式通过面板顶部的模式选择器切换，默认是**系统安装**，第二项是 **TF卡游戏库**。
+除了把 Armada 安装到内部存储，插件还可以把 TF 卡转换为 Armada 游戏库。两种功能通过面板顶部的三个图标标签页切换：第一个是**系统安装**（默认），第二个是 **TF卡游戏库**，第三个是**设置**，按语言、作者、版本的顺序显示。
 
 1. **先在 Android 上操作。** 使用[「智能TF卡分配器」](https://github.com/mydanyi/smart-tf-allocator)应用完成 TF 卡分配，APK 可从[发布页](https://github.com/mydanyi/smart-tf-allocator/releases/latest)下载。Android 端负责分配并初始化 Android 存储空间；Linux 插件只把 Linux 保留分区格式化为 ext4 并挂载、接入 Steam 游戏库，同时保留 Android 存储。该应用会划分 Android 元数据／私有分区和 Linux 保留分区；全新分配会清除卡上已有的全部数据。该应用可通过 Shizuku 以免 root 方式运行，具体支持的 Android／Shizuku 版本请以应用说明为准。
 2. **再使用 Armada Installer 入口。** 把卡插入掌机，打开 Armada Installer 面板，选择 **TF卡游戏库**，重新扫描并选择该卡。
@@ -74,7 +75,7 @@ npm run typecheck
 npm run build    # rollup -c，输出 dist/
 ```
 
-`src/model.ts` 保存尺寸范围、剩余空间、供电限制、阻止原因和确认内容等决策逻辑；`src/i18n.ts` 保存中英文文案。`src/PluginContent.tsx` 保存模式选择器，`src/TfLibraryContent.tsx` 连同 `src/tf_model.ts`、`src/tf_types.ts`、`src/tf_backend.ts`、`src/tf_i18n.ts` 保存 TF 卡游戏库。
+`src/model.ts` 保存尺寸范围、剩余空间、供电限制、阻止原因和确认内容等决策逻辑；`src/i18n.ts` 保存中英文文案。`src/PluginContent.tsx` 保存图标分页和设置页，`src/TfLibraryContent.tsx` 连同 `src/tf_model.ts`、`src/tf_types.ts`、`src/tf_backend.ts`、`src/tf_i18n.ts` 保存 TF 卡游戏库。
 
 ## 打包
 
