@@ -51,6 +51,8 @@ MOUNT_POLL_DELAY = 0.5
 LIBRARY_NAME = "SteamLibrary"
 STEAMAPPS_NAME = "steamapps"
 MARKER_NAME = tf_inspection.LINUX_MARKER_NAME
+STEAM_CONFIRM_TIMEOUT = 5.0
+STEAM_CONFIRM_POLL = 0.25
 
 _VDF_PATH = re.compile(r'"path"\s*"([^"]*)"')
 _UUID_DASH = re.compile(r"-")
@@ -354,6 +356,12 @@ class TfWorker:
     def _register(self, library):
         self._set_phase("registering", "Registering the Steam library")
         library_path = str(library)
+        # Members already listed (e.g. a card mounted on reconnect) are
+        # registered before any request is issued, even if Steam is stopped.
+        if self._library_member(library_path):
+            self._update(library_requested=False, library_registered=True, library_pending=False,
+                         detail="")
+            return
         if not self._steam_running():
             self._update(library_requested=False, library_registered=False, library_pending=True,
                          detail="Steam is not running; the library is mounted and pending registration")
@@ -366,10 +374,26 @@ class TfWorker:
         requested = result is not None and result.returncode == 0
         # A CLI success only means Steam was asked; membership is confirmed by
         # reading the account's own libraryfolders.vdf, never by an exit code.
-        registered = bool(requested and self._library_member(library_path))
+        # The VDF write is asynchronous, so a successful CLI is given a bounded
+        # monotonic deadline with an immediate first read; a failed CLI reads
+        # once and never waits.
+        if requested:
+            registered = self._await_membership(library_path)
+        else:
+            registered = self._library_member(library_path)
         self._update(library_requested=requested, library_registered=registered,
                      library_pending=not registered,
                      detail="" if registered else "the library request could not be confirmed")
+
+    def _await_membership(self, library_path):
+        deadline = time.monotonic() + STEAM_CONFIRM_TIMEOUT
+        while True:
+            if self._library_member(library_path):
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(STEAM_CONFIRM_POLL if remaining > STEAM_CONFIRM_POLL else remaining)
 
     def _steam_running(self):
         try:

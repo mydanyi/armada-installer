@@ -232,6 +232,48 @@ class WorkerTestCase(unittest.TestCase):
         return tf_state.read_json(self.status_path) or {}
 
 
+class ClockStub:
+    """A monotonic clock whose sleeping advances virtual time, without real waits."""
+
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+        for hook in getattr(self, "hooks", []):
+            hook()
+
+
+class DelayedVdfRunner(WorkerRunner):
+    """A runner whose Steam request persists the VDF after a delay in virtual time."""
+
+    def __init__(self, clock, delay):
+        super().__init__()
+        self.clock = clock
+        self.delay = delay
+        self.write_at = None
+        self._written = False
+
+    def __call__(self, argv, **kwargs):
+        if argv and argv[0] == "systemd-run":
+            self.calls.append(list(argv))
+            if self.steam_rc == 0 and self.vdf_path is not None:
+                self.write_at = self.clock.now + self.delay
+            return self._done(argv, self.steam_rc, "", "steam request failed" if self.steam_rc else "")
+        return super().__call__(argv, **kwargs)
+
+    def _write_vdf(self):
+        if self._written or self.write_at is None or self.clock.now < self.write_at:
+            return
+        super()._write_vdf()
+        self._written = True
+
+
 class BusyRunner(WorkerRunner):
     """A runner whose reserve is mounted and refuses to unmount."""
 
@@ -409,9 +451,12 @@ class SteamTests(WorkerTestCase):
         self.assertEqual(self.runner.ran("systemd-run"), [])
 
     def test_a_cli_success_without_membership_is_not_a_registration(self):
+        clock = ClockStub()
         self.runner.steam_running = True
         self.runner.vdf_path = None  # no VDF will be written, so membership is unconfirmed
-        code = self._worker(self._mount_plan()).run()
+        with patch.object(tf_worker.time, "monotonic", clock.monotonic), \
+                patch.object(tf_worker.time, "sleep", clock.sleep):
+            code = self._worker(self._mount_plan()).run()
         self.assertEqual(code, 0)
         status = self._status()
         self.assertTrue(status["library_requested"])
@@ -431,6 +476,89 @@ class SteamTests(WorkerTestCase):
         self.assertTrue(status["library_requested"])
         self.assertTrue(status["library_registered"])
         self.assertFalse(status["library_pending"])
+
+    def test_delayed_vdf_persistence_is_confirmed_within_the_deadline(self):
+        clock = ClockStub()
+        runner = DelayedVdfRunner(clock, delay=1.0)
+        runner.default_mount = self.mount_dir
+        runner.vdf_path = self.home / ".local" / "share" / "Steam" / "steamapps"
+        runner.steam_running = True
+        runner.table = table(tf_card.RESERVE_CONNECTED)
+        runner.children = WorkerRunner._children(tf_card.RESERVE_CONNECTED)
+        runner.blkid_values = {"UUID": LINUX_FS_UUID, "TYPE": "ext4"}
+        # The VDF is created only on a virtual-clock advance after the delay, so
+        # the immediate first read must miss, and a later poll must hit it once.
+        clock.hooks = [runner._write_vdf]
+        with patch.object(tf_worker.time, "monotonic", clock.monotonic), \
+                patch.object(tf_worker.time, "sleep", clock.sleep):
+            code = self._worker(self._mount_plan(), runner=runner).run()
+        self.assertEqual(code, 0)
+        status = self._status()
+        self.assertTrue(status["library_requested"])
+        self.assertTrue(status["library_registered"])
+        self.assertFalse(status["library_pending"])
+        self.assertEqual(len(runner.ran("systemd-run")), 1)
+        self.assertGreaterEqual(len(clock.sleeps), 1)
+        self.assertLessEqual(sum(clock.sleeps), tf_worker.STEAM_CONFIRM_TIMEOUT)
+
+    def test_a_cli_success_that_never_persists_times_out_honestly(self):
+        clock = ClockStub()
+        runner = DelayedVdfRunner(clock, delay=tf_worker.STEAM_CONFIRM_TIMEOUT + 100)
+        runner.default_mount = self.mount_dir
+        runner.vdf_path = self.home / ".local" / "share" / "Steam" / "steamapps"
+        runner.steam_running = True
+        runner.table = table(tf_card.RESERVE_CONNECTED)
+        runner.children = WorkerRunner._children(tf_card.RESERVE_CONNECTED)
+        runner.blkid_values = {"UUID": LINUX_FS_UUID, "TYPE": "ext4"}
+        with patch.object(tf_worker.time, "monotonic", clock.monotonic), \
+                patch.object(tf_worker.time, "sleep", clock.sleep):
+            code = self._worker(self._mount_plan(), runner=runner).run()
+        self.assertEqual(code, 0)
+        status = self._status()
+        self.assertTrue(status["library_requested"])
+        self.assertFalse(status["library_registered"])
+        self.assertTrue(status["library_pending"])
+        self.assertEqual(len(runner.ran("systemd-run")), 1)
+        self.assertLessEqual(sum(clock.sleeps), tf_worker.STEAM_CONFIRM_TIMEOUT)
+        self.assertGreaterEqual(sum(clock.sleeps), tf_worker.STEAM_CONFIRM_TIMEOUT - tf_worker.STEAM_CONFIRM_POLL)
+
+    def test_a_cli_failure_reads_once_and_never_waits(self):
+        clock = ClockStub()
+        runner = DelayedVdfRunner(clock, delay=0.0)
+        runner.default_mount = self.mount_dir
+        runner.vdf_path = self.home / ".local" / "share" / "Steam" / "steamapps"
+        runner.steam_running = True
+        runner.steam_rc = 1
+        runner.table = table(tf_card.RESERVE_CONNECTED)
+        runner.children = WorkerRunner._children(tf_card.RESERVE_CONNECTED)
+        runner.blkid_values = {"UUID": LINUX_FS_UUID, "TYPE": "ext4"}
+        with patch.object(tf_worker.time, "monotonic", clock.monotonic), \
+                patch.object(tf_worker.time, "sleep", clock.sleep):
+            code = self._worker(self._mount_plan(), runner=runner).run()
+        self.assertEqual(code, 0)
+        status = self._status()
+        self.assertFalse(status["library_requested"])
+        self.assertFalse(status["library_registered"])
+        self.assertTrue(status["library_pending"])
+        self.assertEqual(clock.sleeps, [])
+        self.assertEqual(len(runner.ran("systemd-run")), 1)
+
+    def test_preexisting_membership_is_registered_without_a_request(self):
+        self.runner.steam_running = False
+        self.runner.steam_rc = 1
+        plan = self._mount_plan()
+        # Simulate a library that was already added to the VDF by a prior run.
+        vdf = self.runner.vdf_path / "libraryfolders.vdf"
+        vdf.parent.mkdir(parents=True, exist_ok=True)
+        vdf.write_text('"libraryfolders"\n{\n  "0"\n  {\n    "path" "%s"\n  }\n}\n' %
+                       (self.mount_dir / "SteamLibrary"), encoding="utf-8")
+        code = self._worker(plan).run()
+        self.assertEqual(code, 0)
+        status = self._status()
+        self.assertFalse(status["library_requested"])
+        self.assertTrue(status["library_registered"])
+        self.assertFalse(status["library_pending"])
+        self.assertEqual(self.runner.ran("systemd-run"), [])
 
 
 if __name__ == "__main__":

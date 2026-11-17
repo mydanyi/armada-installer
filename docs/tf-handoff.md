@@ -20,7 +20,7 @@ domain checks in `armada_installer.tf_card`.
 external files directory on the public volume. The descriptor is a plain
 UTF-8 JSON object.
 
-## Schema (schema_version 1)
+## Legacy schema (schema_version 1)
 
 ```json
 {
@@ -54,6 +54,16 @@ float where an integer is required, an out-of-range ratio, or an invalid UUID.
 It returns a **new, normalised** dictionary. Unknown, non-authoritative keys are
 preserved as-is and never influence any decision.
 
+## Volume identity for mixed allocation (schema_version 3)
+
+The Android allocator can write a mixed handoff without reading the physical
+CID. This format keeps the v1 size, ratio and UUID fields, sets
+`schema_version` to `3`, adds `identity_mode: "volume"` and
+`allocation_mode: "mixed"`, and requires an explicit `card_cid: null`.
+Linux verifies the reserve filesystem UUID, the Android private partition GUID,
+card capacity and the same three-partition layout. The Linux worker still reads
+the physical CID to bind its prepared operation to the card.
+
 ## Pending and connected states
 
 The reserve partition is identified by its GPT **type GUID**, never by label or
@@ -80,8 +90,8 @@ reserve type, requires a GPT (`label == "gpt"`) table with a 512- or
 * the Android metadata partition is exactly 16 MiB;
 * the Android private partition GUID matches `handoff.private_partition_guid`;
 * the reserve GUID matches `handoff.public_partition_guid` when it is not `null`;
-* `handoff.card_cid` equals `card_cid` and `handoff.disk_bytes` equals
-  `disk_bytes` **exactly** (the identity read from the physical card);
+* the physical card CID is well-formed, and matches `handoff.card_cid` for v1;
+* `handoff.disk_bytes` matches the physical card capacity **exactly**;
 * the reserve size is within 8 MiB of `disk_bytes * linux_ratio / 100`, leaving
   room for native MiB/alignment rounding.
 
