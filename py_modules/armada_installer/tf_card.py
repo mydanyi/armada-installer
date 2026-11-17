@@ -14,6 +14,7 @@ import re
 
 MAGIC = "armada-tf-handoff"
 SCHEMA_VERSION = 1
+SCHEMA_VERSION_V3 = 3
 MIB = 1024 * 1024
 META_BYTES = 16 * MIB
 MIN_RATIO = 10
@@ -33,6 +34,13 @@ RESERVE_TYPES = (RESERVE_PENDING, RESERVE_CONNECTED)
 _HANDOFF_KEYS = ("magic", "schema_version", "card_cid", "disk_bytes", "linux_ratio",
                  "public_fs_uuid", "public_partition_guid", "private_partition_guid",
                  "private_fs_uuid")
+# schema3 keys; card_cid is explicit-null and the schema3 modes are pinned.
+_V3_REQUIRED_KEYS = ("magic", "schema_version", "identity_mode", "allocation_mode",
+                     "card_cid", "disk_bytes", "linux_ratio", "public_fs_uuid",
+                     "public_partition_guid", "private_partition_guid",
+                     "private_fs_uuid")
+V3_IDENTITY_MODE = "volume"
+V3_ALLOCATION_MODE_MIXED = "mixed"
 _HEX = re.compile(r"[0-9a-fA-F]+\Z")
 _FAT_UUID = re.compile(r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}\Z")
 
@@ -73,21 +81,49 @@ def _same_guid(left, right):
     return _canonical_guid(left, "GUID") == _canonical_guid(right, "GUID")
 
 
+def _check_v3_contract(handoff):
+    """Enforce the schema3 identity/allocation contract on a raw handoff.
+
+    Used both by ``validate_handoff`` and by ``validate_layout`` so a caller
+    cannot reach the geometry checks with an unnormalised schema3 handoff.
+    """
+    _require(_strict_int(handoff.get("schema_version"), "schema_version") == SCHEMA_VERSION_V3,
+             "unsupported handoff schema_version")
+    _require(handoff.get("identity_mode") == V3_IDENTITY_MODE,
+             "schema3 identity_mode must be %r" % V3_IDENTITY_MODE)
+    _require(handoff.get("allocation_mode") == V3_ALLOCATION_MODE_MIXED,
+             "schema3 allocation_mode must be %r" % V3_ALLOCATION_MODE_MIXED)
+    _require("card_cid" in handoff and handoff["card_cid"] is None,
+             "schema3 card_cid must be explicitly null")
+
+
 def validate_handoff(handoff):
     """Return a normalised copy of an Android handoff descriptor.
 
     Raises ``ValueError`` for a wrong magic or version, a missing key, a
     boolean or float where an integer is required, a malformed CID, an
     out-of-range ratio, or an invalid UUID.  Unknown keys are preserved as-is.
+
+    Supported schema versions: 1 (legacy mixed CID, unchanged behaviour) and
+    3 (``identity_mode == "volume"``, ``allocation_mode == "mixed"``,
+    ``card_cid`` explicitly null).  Other versions remain rejected.
     """
     _require(isinstance(handoff, dict), "the handoff must be an object")
-    for key in _HANDOFF_KEYS:
-        _require(key in handoff, "the handoff is missing %r" % key)
-    _require(handoff["magic"] == MAGIC, "unsupported handoff magic")
-    _require(_strict_int(handoff["schema_version"], "schema_version") == SCHEMA_VERSION,
+    _require(handoff.get("magic") == MAGIC, "unsupported handoff magic")
+    _require("schema_version" in handoff, "the handoff is missing 'schema_version'")
+    version = _strict_int(handoff["schema_version"], "schema_version")
+    _require(version in (SCHEMA_VERSION, SCHEMA_VERSION_V3),
              "unsupported handoff schema_version")
-    seen = dict(handoff)
-    seen["card_cid"] = _card_cid(handoff["card_cid"])
+    if version == SCHEMA_VERSION_V3:
+        for key in _V3_REQUIRED_KEYS:
+            _require(key in handoff, "the handoff is missing %r" % key)
+        _check_v3_contract(handoff)
+        seen = dict(handoff)
+    else:
+        for key in _HANDOFF_KEYS:
+            _require(key in handoff, "the handoff is missing %r" % key)
+        seen = dict(handoff)
+        seen["card_cid"] = _card_cid(handoff["card_cid"])
     _require(_strict_int(handoff["disk_bytes"], "disk_bytes") > 0, "disk_bytes must be positive")
     ratio = _strict_int(handoff["linux_ratio"], "linux_ratio")
     _require(MIN_RATIO <= ratio <= MAX_RATIO, "linux_ratio must be %d..%d" % (MIN_RATIO, MAX_RATIO))
@@ -141,8 +177,16 @@ def validate_layout(table, handoff, card_cid, disk_bytes):
     _require(meta["type"].lower() == ANDROID_META, "the Android metadata partition type is unchanged")
     _require(private["type"].lower() == ANDROID_PRIVATE, "the Android private partition type is unchanged")
     _require(meta["size"] * sector == META_BYTES, "the Android metadata partition must be exactly 16 MiB")
-    _require(_card_cid(handoff.get("card_cid")) == _card_cid(card_cid),
-             "the handoff card CID does not match the card")
+    # Independently observed physical CID must always be a valid 32-hex string.
+    physical_cid = _card_cid(card_cid)
+    version = _strict_int(handoff.get("schema_version"), "schema_version")
+    _require(version in (SCHEMA_VERSION, SCHEMA_VERSION_V3),
+             "unsupported handoff schema_version")
+    if version == SCHEMA_VERSION:
+        _require(_card_cid(handoff.get("card_cid")) == physical_cid,
+                 "the handoff card CID does not match the card")
+    else:
+        _check_v3_contract(handoff)
     _require(_strict_int(handoff.get("disk_bytes"), "disk_bytes") == _strict_int(disk_bytes, "disk_bytes"),
              "the handoff capacity does not match the card")
     _require(_same_guid(private["uuid"], handoff.get("private_partition_guid")),
